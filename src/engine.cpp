@@ -1,25 +1,22 @@
+#include <algorithm>
+#include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <functional>
-#include <iostream>
+#include <limits>
 #include <list>
 #include <map>
-#include <numeric>
-#include <stdexcept>
 #include <stdlib.h>
-#include <vector>
 
-enum Side { Buy, Sell };
+enum class Side { Buy, Sell };
 
-// Only Market and Limit for now
-// FIX has a lot more, but their expose position intentions (limit does too but
-// its much more useful)
-// Market Orders will eat into next price levels if the liquidity doesnt exist
-// in the book at that price level
-enum Type { Market, Limit };
+enum class Type { Market, Limit };
 
-enum Fill_Status {
+enum class Status {
   Filled,
-  Partially_Filled,
+  PartialFill,
+  Resting,
+  Cancelled,
   Rejected,
 };
 
@@ -28,11 +25,15 @@ template <typename T> struct Order {
   // Time in ms
   T price;
   int quantity;
+  int FilledQuantity = 0;
   std::chrono::milliseconds time =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch());
   Side direction;
   Type type;
+
+  // Const is a promise that calling this wont modify the object
+  int GetRemainingQuantity() const { return quantity - FilledQuantity; }
 };
 
 template <typename T> class MatchingEngine {
@@ -48,19 +49,14 @@ private:
   // What sellers are willing to take
   std::map<T, std::list<Order<T>>, std::less<T>> Ask;
 
-  // Start with a 0.25 tick size
-  // We store a price that is 4 times, whatever the user gave us
   float TickSize = 0.25f;
 
-  // Start at order 0
   // NOTE: NOT USED YET
   size_t OrderID = 0;
 
-  // For storing last price
-  T LastPrice;
+  T LastPrice = T{};
 
-  // Storing Spread;
-  T Spread;
+  T Spread = T{};
 
   template <Side S> bool Crosses(T Price, T PriceLimit) {
     if constexpr (S == Side::Buy) {
@@ -69,48 +65,114 @@ private:
       return Price >= PriceLimit;
   }
 
-  template <Side S> auto &GetBook() {
+  template <Side S> auto &GetOppositeBook() {
     if constexpr (S == Side::Buy) {
-      return &Ask;
+      return Ask;
     } else {
-      return &Bid;
+      return Bid;
     }
   }
 
-  template <Side S> Fill_Status Match(Order<T> &Order) {
+  template <Side S> auto &GetBook() {
+    if constexpr (S == Side::Buy) {
+      return Bid;
+    } else {
+      return Ask;
+    }
+  }
+
+  template <Side S> Status Match(Order<T> &O) {
     // auto &Book = S == Side::Buy ? Ask : Bid;
-    auto &Book = GetBook<S>();
+    auto &Book = GetOppositeBook<S>();
 
     auto BestBookPrice = Book.begin();
-    auto &BestBookOrder = BestBookPrice->second.front();
 
-    while (!Book.empty() && Order.quantity > 0 &&
-           Crosses<S>(BestBookPrice->first, Order.price)) {
-      BestBookOrder.quantity--;
-      Order.quantity--;
+    // Determine if we should be using lowest() or max()
+    T LimitPrice;
+    if (O.type == Type::Market) {
+      LimitPrice = S == Side::Buy ? std::numeric_limits<T>::max()
+                                  : std::numeric_limits<T>::lowest();
+    } else {
+      LimitPrice = O.price;
+    }
+
+    while (!Book.empty() && O.GetRemainingQuantity() > 0 &&
+           Crosses<S>(BestBookPrice->first, LimitPrice)) {
+      auto &BestBookOrder = BestBookPrice->second.front();
+
+      auto MinTradedQ = std::min(BestBookOrder.GetRemainingQuantity(),
+                                 O.GetRemainingQuantity());
+      BestBookOrder.FilledQuantity += MinTradedQ;
+      O.FilledQuantity += MinTradedQ;
 
       LastPrice = BestBookOrder.price;
 
-      if (BestBookOrder.quantity == 0) {
-        BestBookOrder.erase();
-        &BestBookOrder = BestBookPrice->second.front();
+      if (BestBookOrder.GetRemainingQuantity() == 0) {
+        // Pops the first element in the list
+        BestBookPrice->second.pop_front();
+
+        if (BestBookPrice->second.empty()) {
+          // if the list is empty, erase the price level
+          Book.erase(BestBookPrice);
+
+          // Get the Books best price
+          BestBookPrice = Book.begin();
+        }
       }
     }
 
-    if (Order.quantity != 0) {
-      return Partially_Filled;
+    int RemainingQ = O.GetRemainingQuantity();
+
+    if (RemainingQ == 0) {
+      return Status::Filled;
+    } else if (O.type == Type::Limit) {
+      auto &SameSideBook = GetBook<S>();
+      SameSideBook[O.price].push_back(O);
+      return Status::Resting;
+    } else if (RemainingQ == O.quantity) {
+      return Status::Cancelled;
+    } else {
+      return Status::PartialFill;
     }
 
-    return Filled;
+    return Status::Filled;
   }
 
 public:
-  Fill_Status ExecuteOrder(Order<T> &Order) {}
+  Status ExecuteOrder(Order<T> &O) {
+
+    if (!(O.quantity > 0 && O.GetRemainingQuantity() == O.quantity)) {
+      return Status::Rejected;
+    }
+
+    if (O.direction == Side::Buy) {
+      return Match<Side::Buy>(O);
+    } else
+      return Match<Side::Sell>(O);
+  }
 };
 
+void TestLimitBuyFullyFills() {
+  MatchingEngine<int> Engine;
+
+  Order<int> Sell = {.price = 100,
+                     .quantity = 10,
+                     .direction = Side::Sell,
+                     .type = Type::Limit};
+
+  assert(Engine.ExecuteOrder(Sell) == Status::Resting);
+
+  Order<int> Buy = {.price = 100,
+                    .quantity = 10,
+                    .direction = Side::Buy,
+                    .type = Type::Limit};
+
+  assert(Engine.ExecuteOrder(Buy) == Status::Filled);
+  assert(Buy.FilledQuantity == 10);
+}
 int main(void) {
 
-  MatchingEngine<int> Engine;
+  TestLimitBuyFullyFills();
 
   return 0;
 }
