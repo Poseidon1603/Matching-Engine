@@ -1,3 +1,5 @@
+#pragma once
+
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -6,7 +8,6 @@
 #include <limits>
 #include <list>
 #include <map>
-#include <stdlib.h>
 
 enum class Side { Buy, Sell };
 
@@ -134,8 +135,6 @@ private:
     } else {
       return Status::PartialFill;
     }
-
-    return Status::Filled;
   }
 
 public:
@@ -151,28 +150,3 @@ public:
       return Match<Side::Sell>(O);
   }
 };
-
-void TestLimitBuyFullyFills() {
-  MatchingEngine<int> Engine;
-
-  Order<int> Sell = {.price = 100,
-                     .quantity = 10,
-                     .direction = Side::Sell,
-                     .type = Type::Limit};
-
-  assert(Engine.ExecuteOrder(Sell) == Status::Resting);
-
-  Order<int> Buy = {.price = 100,
-                    .quantity = 10,
-                    .direction = Side::Buy,
-                    .type = Type::Limit};
-
-  assert(Engine.ExecuteOrder(Buy) == Status::Filled);
-  assert(Buy.FilledQuantity == 10);
-}
-int main(void) {
-
-  TestLimitBuyFullyFills();
-
-  return 0;
-}
