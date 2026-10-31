@@ -101,15 +101,16 @@ template <Side s> void TestLimitNonCrossingBoundary() {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
   assert(Engine.ExecuteOrder(OrderB) == Status::Resting);
+  assert(OrderB.FilledQuantity == 0);
 }
+
 
 // Market Orders
 
 template <Side s> void TestMarketOnEmptyBookCancelled() {
   MatchingEngine<int> Engine;
 
-  Order<int> OrderA = {
-      .price = 100, .quantity = 10, .direction = s, .type = Type::Market};
+  Order<int> OrderA = {.quantity = 10, .direction = s, .type = Type::Market};
 
   assert(Engine.ExecuteOrder(OrderA) == Status::Cancelled);
 }
@@ -122,10 +123,8 @@ template <Side s> void TestMarketPartialFill() {
 
   assert(Engine.ExecuteOrder(OrderA) == Status::Resting);
 
-  Order<int> OrderB = {.price = 100,
-                       .quantity = 15,
-                       .direction = Opposite(s),
-                       .type = Type::Market};
+  Order<int> OrderB = {
+      .quantity = 15, .direction = Opposite(s), .type = Type::Market};
 
   assert(Engine.ExecuteOrder(OrderB) == Status::PartialFill);
   assert(OrderB.FilledQuantity == 10);
@@ -148,17 +147,11 @@ template <Side s> void TestMarketOnMultiplePriceLevelsFills() {
 
   assert(Engine.ExecuteOrder(OrderB) == Status::Resting);
 
-  Order<int> OrderC = {.price = 100 + (GetSideVal<int>(s)),
-                       .quantity = 20,
-                       .direction = s,
-                       .type = Type::Market};
+  Order<int> OrderC = {.quantity = 20, .direction = s, .type = Type::Market};
 
   assert(Engine.ExecuteOrder(OrderC) == Status::Filled);
 
-  Order<int> OrderD = {.price = 100 + (2 * GetSideVal<int>(s)),
-                       .quantity = 20,
-                       .direction = s,
-                       .type = Type::Market};
+  Order<int> OrderD = {.quantity = 20, .direction = s, .type = Type::Market};
 
   assert(Engine.ExecuteOrder(OrderD) == Status::Cancelled);
 }
@@ -197,6 +190,55 @@ void TestNegativeQuantityRejects() {
   assert(Engine.ExecuteOrder(Buy) == Status::Rejected);
 }
 
+void TestMarketWithPriceRejects() {
+  MatchingEngine<int> Engine;
+
+  Order<int> OrderA = {.price = 100, .quantity=10, .direction=Side::Buy, .type= Type::Market};
+
+  assert(Engine.ExecuteOrder(OrderA) == Status::Rejected);
+}
+
+void TestLimitNoPriceRejects() {
+  MatchingEngine<int> Engine;
+
+  Order<int> OrderA = {.quantity = 10, .direction=Side::Buy,.type= Type::Limit};
+
+  assert(Engine.ExecuteOrder(OrderA) == Status::Rejected);
+}
+
+// Order Book Structure
+
+template <Side s> void TestOrderBookSorting() {
+  MatchingEngine<int> Engine;
+
+  Order<int> OrderA = {.price = 100 + (2 * GetSideVal<int>(s)),
+                       .quantity = 10,
+                       .direction = s,
+                       .type = Type::Limit};
+
+  assert(Engine.ExecuteOrder(OrderA) == Status::Resting);
+
+  Order<int> OrderB = {.price = 100 + GetSideVal<int>(s),
+                       .quantity = 10,
+                       .direction = s,
+                       .type = Type::Limit};
+
+  assert(Engine.ExecuteOrder(OrderB) == Status::Resting);
+
+  Order<int> OrderC = {
+      .quantity = 15, .direction = Opposite(s), .type = Type::Market};
+
+  assert(Engine.ExecuteOrder(OrderC) == Status::Filled);
+
+  Order<int> OrderD = {.price = 100 + (GetSideVal<int>(s)),
+                       .quantity = 5,
+                       .direction = Opposite(s),
+                       .type = Type::Limit};
+
+  assert(Engine.ExecuteOrder(OrderD) == Status::Resting);
+  assert(OrderD.FilledQuantity == 0);
+}
+
 int main(void) {
   // Limit
   TestLimitRests<Side::Buy>();
@@ -228,6 +270,12 @@ int main(void) {
   TestNoQuantityRejects();
   TestPreFilledOrderRejected();
   TestNegativeQuantityRejects();
+  TestMarketWithPriceRejects();
+  TestLimitNoPriceRejects();
+
+  // Order Book Structure
+  TestOrderBookSorting<Side::Buy>();
+  TestOrderBookSorting<Side::Sell>();
 
   return 0;
 }

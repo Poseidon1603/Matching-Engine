@@ -7,6 +7,8 @@
 #include <limits>
 #include <list>
 #include <map>
+#include <optional>
+#include <unordered_map>
 
 enum class Side { Buy, Sell };
 
@@ -22,10 +24,11 @@ enum class Status {
 
 // Order Object
 template <typename T> struct Order {
-  // Time in ms
-  T price;
+  int id;
+  std::optional<T> price = std::nullopt;
   int quantity;
   int FilledQuantity = 0;
+  // Time in ms
   std::chrono::milliseconds time =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch());
@@ -34,6 +37,12 @@ template <typename T> struct Order {
 
   // Const is a promise that calling this wont modify the object
   int GetRemainingQuantity() const { return quantity - FilledQuantity; }
+};
+
+struct Result {
+  int OrderID;
+  int FilledQuantity;
+  Status OrderStatus;
 };
 
 template <typename T> class MatchingEngine {
@@ -49,9 +58,11 @@ private:
   // What sellers are willing to take
   std::map<T, std::list<Order<T>>, std::less<T>> Ask;
 
+  // Index to Query Orders by ID
+  std::unordered_map<int, > Index; 
+
   float TickSize = 0.25f;
 
-  // NOTE: NOT USED YET
   size_t OrderID = 0;
 
   T LastPrice = T{};
@@ -93,7 +104,7 @@ private:
       LimitPrice = S == Side::Buy ? std::numeric_limits<T>::max()
                                   : std::numeric_limits<T>::lowest();
     } else {
-      LimitPrice = O.price;
+      LimitPrice = *O.price;
     }
 
     while (!Book.empty() && O.GetRemainingQuantity() > 0 &&
@@ -105,7 +116,7 @@ private:
       BestBookOrder.FilledQuantity += MinTradedQ;
       O.FilledQuantity += MinTradedQ;
 
-      LastPrice = BestBookOrder.price;
+      LastPrice = *BestBookOrder.price;
 
       if (BestBookOrder.GetRemainingQuantity() == 0) {
         // Pops the first element in the list
@@ -127,7 +138,7 @@ private:
       return Status::Filled;
     } else if (O.type == Type::Limit) {
       auto &SameSideBook = GetBook<S>();
-      SameSideBook[O.price].push_back(O);
+      SameSideBook[*O.price].push_back(O);
       return Status::Resting;
     } else if (RemainingQ == O.quantity) {
       return Status::Cancelled;
@@ -138,14 +149,21 @@ private:
 
 public:
   Status ExecuteOrder(Order<T> &O) {
+    O.id = OrderID;
+    OrderID++;
 
-    if (!(O.quantity > 0 && O.GetRemainingQuantity() == O.quantity)) {
+    if (!(O.quantity > 0 && O.FilledQuantity == 0)) {
       return Status::Rejected;
     }
+
+    if ((O.price.has_value()) != (O.type == Type::Limit)) {
+     return Status::Rejected;
+    }  
 
     if (O.direction == Side::Buy) {
       return Match<Side::Buy>(O);
     } else
       return Match<Side::Sell>(O);
   }
+
 };
