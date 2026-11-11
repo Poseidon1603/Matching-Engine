@@ -10,7 +10,7 @@ ifeq ($(MODE),release)
   CXXFLAGS := $(BASE) -O2 -DNDEBUG
   LDFLAGS  :=
 else
-  CXXFLAGS := $(BASE) -O2 -g3 -fsanitize=address,undefined
+  CXXFLAGS := $(BASE) -O2 -g3 -fsanitize=address,undefined -D_GLIBCXX_ASSERTIONS
   LDFLAGS  := -fsanitize=address,undefined
 endif
 

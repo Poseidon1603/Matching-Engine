@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <functional>
@@ -22,9 +23,14 @@ enum class Status {
   Rejected,
 };
 
+enum class CancelResult {
+  Cancelled,
+  Rejected,
+};
+
 // Order Object
 template <typename T> struct Order {
-  int id;
+  size_t id = 0;
   std::optional<T> price = std::nullopt;
   int quantity;
   int FilledQuantity = 0;
@@ -40,7 +46,7 @@ template <typename T> struct Order {
 };
 
 struct Result {
-  int OrderID;
+  size_t OrderID;
   int FilledQuantity;
   Status OrderStatus;
 };
@@ -58,9 +64,10 @@ private:
   // What sellers are willing to take
   std::map<T, std::list<Order<T>>, std::less<T>> Ask;
 
-  // Index to Query Orders by ID
-  std::unordered_map<int, > Index; 
+  // Index to Query Orders by ID, returns an iterator
+  std::unordered_map<size_t, typename std::list<Order<T>>::iterator> Index;
 
+  // NOT USED YET
   float TickSize = 0.25f;
 
   size_t OrderID = 0;
@@ -92,6 +99,36 @@ private:
     }
   }
 
+  template <Side s>
+  CancelResult CancelBySide(
+      std::unordered_map<
+          size_t, typename std::list<Order<T>>::iterator>::iterator IndexIt) {
+    auto &Book = GetBook<s>();
+
+    auto OrderIt = IndexIt->second;
+
+    // Need * because price is an optional
+    T price = *OrderIt->price;
+
+    // Get pair<Price, list<Order<T>>>
+    auto PriceLevel = Book.find(price);
+
+    assert(PriceLevel != Book.end());
+
+    // Erase Order via iterator it
+    PriceLevel->second.erase(OrderIt);
+
+    // Check whether we need to erase a price level
+    if (PriceLevel->second.empty()) {
+      Book.erase(PriceLevel);
+    }
+
+    // Erase from index
+    Index.erase(IndexIt);
+
+    return CancelResult::Cancelled;
+  }
+
   template <Side S> Status Match(Order<T> &O) {
     // auto &Book = S == Side::Buy ? Ask : Bid;
     auto &Book = GetOppositeBook<S>();
@@ -120,6 +157,7 @@ private:
 
       if (BestBookOrder.GetRemainingQuantity() == 0) {
         // Pops the first element in the list
+        Index.erase(BestBookOrder.id);
         BestBookPrice->second.pop_front();
 
         if (BestBookPrice->second.empty()) {
@@ -138,7 +176,12 @@ private:
       return Status::Filled;
     } else if (O.type == Type::Limit) {
       auto &SameSideBook = GetBook<S>();
-      SameSideBook[*O.price].push_back(O);
+      // Get Price level
+      auto &Level = SameSideBook[*O.price];
+      // Insert at back and return an iterator
+      auto It = Level.insert(Level.end(), O);
+      // Push into the index
+      Index[O.id] = It;
       return Status::Resting;
     } else if (RemainingQ == O.quantity) {
       return Status::Cancelled;
@@ -148,22 +191,41 @@ private:
   }
 
 public:
-  Status ExecuteOrder(Order<T> &O) {
+  Result ExecuteOrder(Order<T> &O) {
     O.id = OrderID;
     OrderID++;
 
     if (!(O.quantity > 0 && O.FilledQuantity == 0)) {
-      return Status::Rejected;
+      return {O.id, O.FilledQuantity, Status::Rejected};
     }
 
     if ((O.price.has_value()) != (O.type == Type::Limit)) {
-     return Status::Rejected;
-    }  
+      return {O.id, O.FilledQuantity, Status::Rejected};
+    }
 
     if (O.direction == Side::Buy) {
-      return Match<Side::Buy>(O);
-    } else
-      return Match<Side::Sell>(O);
+      Status s = Match<Side::Buy>(O);
+      return {O.id, O.FilledQuantity, s};
+    } else {
+      Status s = Match<Side::Sell>(O);
+      return {O.id, O.FilledQuantity, s};
+    }
   }
 
+  CancelResult CancelOrderById(size_t OrderID) {
+    // Returns std::unordered_map<size_t, ListIterator>::iterator or Index.end()
+    auto IndexIt = Index.find(OrderID);
+
+    // The ID doesnt exist
+    if (IndexIt == Index.end()) {
+      return CancelResult::Rejected;
+    }
+
+    // Give the iterator
+    if (IndexIt->second->direction == Side::Buy) {
+      return CancelBySide<Side::Buy>(IndexIt);
+    } else {
+      return CancelBySide<Side::Sell>(IndexIt);
+    }
+  }
 };
