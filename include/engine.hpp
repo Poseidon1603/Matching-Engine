@@ -28,6 +28,8 @@ enum class CancelStatus {
   Rejected,
 };
 
+enum class GetOrderStatus { Found, NotFound };
+
 // Order Object
 template <typename T> struct Order {
   size_t id = 0;
@@ -57,6 +59,20 @@ struct CancelResult {
   CancelStatus Status;
 };
 
+template <typename T> struct GetOrder {
+  T price;
+  size_t OrderID;
+  Side direction;
+  int QuantityRemaining;
+  // When the order came in
+  std::chrono::milliseconds time;
+};
+
+template <typename T> struct GetOrderResult {
+  GetOrderStatus Status;
+  std::optional<GetOrder<T>> Order = std::nullopt;
+};
+
 template <typename T> class MatchingEngine {
 private:
   // What buyers are willing to pay
@@ -76,7 +92,7 @@ private:
   // NOT USED YET
   float TickSize = 0.25f;
 
-  size_t OrderID = 0;
+  size_t OrderID = 1;
 
   T LastPrice = T{};
 
@@ -218,23 +234,40 @@ public:
     }
   }
 
-  CancelResult CancelOrderById(size_t OrderID) {
+  CancelResult CancelOrderById(size_t ID) {
     // Returns std::unordered_map<size_t, ListIterator>::iterator or Index.end()
-    auto IndexIt = Index.find(OrderID);
+    auto IndexIt = Index.find(ID);
 
     // The ID doesnt exist
     if (IndexIt == Index.end()) {
-      return {.OrderID = OrderID, .Status = CancelStatus::Rejected};
+      return {.OrderID = ID, .Status = CancelStatus::Rejected};
     }
 
     int FilledQuantity = IndexIt->second->FilledQuantity;
     // Give the iterator
     if (IndexIt->second->direction == Side::Buy) {
-      return {OrderID, FilledQuantity, CancelBySide<Side::Buy>(IndexIt)};
+      return {ID, FilledQuantity, CancelBySide<Side::Buy>(IndexIt)};
     } else {
-      return {OrderID, FilledQuantity, CancelBySide<Side::Sell>(IndexIt)};
+      return {ID, FilledQuantity, CancelBySide<Side::Sell>(IndexIt)};
     }
   }
 
-  
+  GetOrderResult<T> GetOrderById(size_t ID) {
+    // unordered_map<size_t ID, std::list::Order<T>::iterator>
+    auto IndexIt = Index.find(ID);
+
+    if (IndexIt == Index.end()) {
+      return {.Status = GetOrderStatus::NotFound};
+    }
+
+    auto OrderIt = IndexIt->second;
+
+    GetOrder<T> O = {.price = *OrderIt->price,
+                     .OrderID = OrderIt->id,
+                     .direction = OrderIt->direction,
+                     .QuantityRemaining = OrderIt->GetRemainingQuantity(),
+                     .time = OrderIt->time};
+
+    return {.Status = GetOrderStatus::Found, .Order = O};
+  }
 };
