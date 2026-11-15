@@ -1,5 +1,6 @@
 #include "engine.hpp"
 #include <cassert>
+#include <optional>
 
 Side Opposite(Side s) {
   if (s == Side::Buy) {
@@ -24,8 +25,9 @@ template <Side s> void TestLimitRests() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
-  assert(OrderA.GetRemainingQuantity() == OrderA.quantity);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
+  assert(R.FilledQuantity == 0);
 }
 
 template <Side s> void TestLimitFullyFills() {
@@ -34,15 +36,17 @@ template <Side s> void TestLimitFullyFills() {
   Order<int> OrderSideA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderSideA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderSideA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderSideB = {.price = 100,
                            .quantity = 10,
                            .direction = Opposite(s),
                            .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderSideB).OrderStatus == Status::Filled);
-  assert(OrderSideB.FilledQuantity == 10);
+  Result R2 = Engine.ExecuteOrder(OrderSideB);
+  assert(R2.OrderStatus == Status::Filled);
+  assert(R2.FilledQuantity == 10);
 }
 
 template <Side s> void TestLimitPartialFills() {
@@ -51,23 +55,25 @@ template <Side s> void TestLimitPartialFills() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {.price = 100,
                        .quantity = 5,
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Filled);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Filled);
 
   Order<int> OrderC = {.price = 100,
                        .quantity = 10,
                        .direction = Opposite(s),
                        .type = Type::Limit};
   // We have to try a third order because the engine stores a copy of orders
-
-  assert(Engine.ExecuteOrder(OrderC).OrderStatus == Status::Resting);
-  assert(OrderC.FilledQuantity == 5);
+  Result R3 = Engine.ExecuteOrder(OrderC);
+  assert(R3.OrderStatus == Status::Resting);
+  assert(R3.FilledQuantity == 5);
 }
 
 template <Side s> void TestLimitPriceOverflowRests() {
@@ -76,15 +82,17 @@ template <Side s> void TestLimitPriceOverflowRests() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {.price = 100,
                        .quantity = 15,
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Resting);
-  assert(OrderB.FilledQuantity == 10);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Resting);
+  assert(R2.FilledQuantity == 10);
 }
 
 template <Side s> void TestLimitNonCrossingBoundary() {
@@ -95,13 +103,15 @@ template <Side s> void TestLimitNonCrossingBoundary() {
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Resting);
-  assert(OrderB.FilledQuantity == 0);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Resting);
+  assert(R2.FilledQuantity == 0);
 }
 
 // Market Orders
@@ -111,7 +121,8 @@ template <Side s> void TestMarketOnEmptyBookCancelled() {
 
   Order<int> OrderA = {.quantity = 10, .direction = s, .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Cancelled);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Cancelled);
 }
 
 template <Side s> void TestMarketPartialFill() {
@@ -120,13 +131,15 @@ template <Side s> void TestMarketPartialFill() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {
       .quantity = 15, .direction = Opposite(s), .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::PartialFill);
-  assert(OrderB.FilledQuantity == 10);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::PartialFill);
+  assert(R2.FilledQuantity == 10);
 }
 
 template <Side s> void TestMarketOnMultiplePriceLevelsFills() {
@@ -137,22 +150,26 @@ template <Side s> void TestMarketOnMultiplePriceLevelsFills() {
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {.price = 100 + (2 * GetSideVal<int>(Opposite(s))),
                        .quantity = 10,
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Resting);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Resting);
 
   Order<int> OrderC = {.quantity = 20, .direction = s, .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderC).OrderStatus == Status::Filled);
+  Result R3 = Engine.ExecuteOrder(OrderC);
+  assert(R3.OrderStatus == Status::Filled);
 
   Order<int> OrderD = {.quantity = 20, .direction = s, .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderD).OrderStatus == Status::Cancelled);
+  Result R4 = Engine.ExecuteOrder(OrderD);
+  assert(R4.OrderStatus == Status::Cancelled);
 }
 
 // Quantity
@@ -163,7 +180,8 @@ void TestNoQuantityRejects() {
   Order<int> Buy = {
       .price = 100, .quantity = 0, .direction = Side::Buy, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(Buy).OrderStatus == Status::Rejected);
+  Result R = Engine.ExecuteOrder(Buy);
+  assert(R.OrderStatus == Status::Rejected);
 }
 
 void TestPreFilledOrderRejected() {
@@ -175,7 +193,8 @@ void TestPreFilledOrderRejected() {
                     .direction = Side::Buy,
                     .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(Buy).OrderStatus == Status::Rejected);
+  Result R = Engine.ExecuteOrder(Buy);
+  assert(R.OrderStatus == Status::Rejected);
 }
 
 void TestNegativeQuantityRejects() {
@@ -186,7 +205,8 @@ void TestNegativeQuantityRejects() {
                     .direction = Side::Buy,
                     .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(Buy).OrderStatus == Status::Rejected);
+  Result R = Engine.ExecuteOrder(Buy);
+  assert(R.OrderStatus == Status::Rejected);
 }
 
 void TestMarketWithPriceRejects() {
@@ -197,7 +217,8 @@ void TestMarketWithPriceRejects() {
                        .direction = Side::Buy,
                        .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Rejected);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Rejected);
 }
 
 void TestLimitNoPriceRejects() {
@@ -206,7 +227,8 @@ void TestLimitNoPriceRejects() {
   Order<int> OrderA = {
       .quantity = 10, .direction = Side::Buy, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Rejected);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Rejected);
 }
 
 // Order Book Structure
@@ -219,27 +241,31 @@ template <Side s> void TestOrderBookSorting() {
                        .direction = s,
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {.price = 100 + GetSideVal<int>(s),
                        .quantity = 10,
                        .direction = s,
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Resting);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Resting);
 
   Order<int> OrderC = {
       .quantity = 15, .direction = Opposite(s), .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderC).OrderStatus == Status::Filled);
+  Result R3 = Engine.ExecuteOrder(OrderC);
+  assert(R3.OrderStatus == Status::Filled);
 
   Order<int> OrderD = {.price = 100 + (GetSideVal<int>(s)),
                        .quantity = 5,
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderD).OrderStatus == Status::Resting);
-  assert(OrderD.FilledQuantity == 0);
+  Result R4 = Engine.ExecuteOrder(OrderD);
+  assert(R4.OrderStatus == Status::Resting);
+  assert(R4.FilledQuantity == 0);
 }
 
 // Cancel Order
@@ -249,8 +275,12 @@ template <Side s> void TestOrderCancelsByID() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
-  assert(Engine.CancelOrderById(OrderA.id) == CancelResult::Cancelled);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
+
+  CancelResult Result = Engine.CancelOrderById(R.OrderID);
+  assert(Result.Status == CancelStatus::Cancelled);
+  assert(Result.FilledQuantity == 0);
 }
 
 template <Side s> void TestCancelRejected() {
@@ -259,8 +289,13 @@ template <Side s> void TestCancelRejected() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Market};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Rejected);
-  assert(Engine.CancelOrderById(OrderA.id) == CancelResult::Rejected);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Rejected);
+
+  CancelResult Result = Engine.CancelOrderById(R.OrderID);
+
+  assert(Result.Status == CancelStatus::Rejected);
+  assert(Result.FilledQuantity == std::nullopt);
 }
 
 template <Side s> void TestCancelTwiceRejected() {
@@ -269,9 +304,18 @@ template <Side s> void TestCancelTwiceRejected() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
-  assert(Engine.CancelOrderById(OrderA.id) == CancelResult::Cancelled);
-  assert(Engine.CancelOrderById(OrderA.id) == CancelResult::Rejected);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
+
+  CancelResult CancelR = Engine.CancelOrderById(R.OrderID);
+
+  assert(CancelR.Status == CancelStatus::Cancelled);
+  assert(CancelR.FilledQuantity == 0);
+
+  CancelResult CancelR2 = Engine.CancelOrderById(R.OrderID);
+
+  assert(CancelR2.Status == CancelStatus::Rejected);
+  assert(CancelR2.FilledQuantity == std::nullopt);
 }
 
 template <Side s> void TestCancelLastOrderOnLevel() {
@@ -280,15 +324,22 @@ template <Side s> void TestCancelLastOrderOnLevel() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
-  assert(Engine.CancelOrderById(OrderA.id) == CancelResult::Cancelled);
+  Result R = Engine.ExecuteOrder(OrderA);
+  assert(R.OrderStatus == Status::Resting);
+
+  CancelResult CancelR = Engine.CancelOrderById(R.OrderID);
+
+  assert(CancelR.Status == CancelStatus::Cancelled);
+  assert(CancelR.FilledQuantity == 0);
 
   Order<int> OrderB = {.price = 100,
                        .quantity = 10,
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Resting);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Resting);
+  assert(R2.FilledQuantity == 0);
 }
 
 template <Side s> void TestCancelOrderAfterFilled() {
@@ -297,16 +348,94 @@ template <Side s> void TestCancelOrderAfterFilled() {
   Order<int> OrderA = {
       .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderA).OrderStatus == Status::Resting);
+  Result R = Engine.ExecuteOrder(OrderA);
+
+  assert(R.OrderStatus == Status::Resting);
 
   Order<int> OrderB = {.price = 100,
                        .quantity = 10,
                        .direction = Opposite(s),
                        .type = Type::Limit};
 
-  assert(Engine.ExecuteOrder(OrderB).OrderStatus == Status::Filled);
-  assert(OrderB.FilledQuantity == 10);
-  assert(Engine.CancelOrderById(OrderA.id) == CancelResult::Rejected);
+  Result R2 = Engine.ExecuteOrder(OrderB);
+  assert(R2.OrderStatus == Status::Filled);
+  assert(R2.FilledQuantity == 10);
+
+  CancelResult CancelR = Engine.CancelOrderById(R.OrderID);
+
+  assert(CancelR.Status == CancelStatus::Rejected);
+  assert(CancelR.FilledQuantity == std::nullopt);
+}
+
+template <Side s> void TestPartialFillThenCancel() {
+  MatchingEngine<int> Engine;
+
+  Order<int> OrderA = {
+      .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
+
+  Result R = Engine.ExecuteOrder(OrderA);
+
+  assert(R.OrderStatus == Status::Resting);
+
+  Order<int> OrderB = {.price = 100,
+                       .quantity = 6,
+                       .direction = Opposite(s),
+                       .type = Type::Limit};
+
+  Result R2 = Engine.ExecuteOrder(OrderB);
+
+  assert(R2.OrderStatus == Status::Filled);
+  assert(R2.FilledQuantity == 6);
+
+  CancelResult CancelR = Engine.CancelOrderById(R.OrderID);
+
+  assert(CancelR.Status == CancelStatus::Cancelled);
+  assert(CancelR.FilledQuantity == 6);
+
+  Order<int> OrderC = {.price = 100,
+                       .quantity = 4,
+                       .direction = Opposite(s),
+                       .type = Type::Limit};
+
+  Result R3 = Engine.ExecuteOrder(OrderC);
+
+  assert(R3.OrderStatus == Status::Resting);
+  assert(R3.FilledQuantity == 0);
+}
+
+template <Side s> void TestMultipleOrdersOnLevel() {
+  MatchingEngine<int> Engine;
+
+  Order<int> OrderA = {
+      .price = 100, .quantity = 10, .direction = s, .type = Type::Limit};
+
+  Result R = Engine.ExecuteOrder(OrderA);
+
+  assert(R.OrderStatus == Status::Resting);
+
+  Order<int> OrderB = {
+      .price = 100, .quantity = 5, .direction = s, .type = Type::Limit};
+
+  Result R2 = Engine.ExecuteOrder(OrderB);
+
+  assert(R2.OrderStatus == Status::Resting);
+
+  // Cancel the larger order
+
+  CancelResult CancelR = Engine.CancelOrderById(R.OrderID);
+
+  assert(CancelR.Status == CancelStatus::Cancelled);
+  assert(CancelR.FilledQuantity == 0);
+
+  Order<int> OrderC = {.price = 100,
+                       .quantity = 7,
+                       .direction = Opposite(s),
+                       .type = Type::Limit};
+
+  Result R3 = Engine.ExecuteOrder(OrderC);
+
+  assert(R3.OrderStatus == Status::Resting);
+  assert(R3.FilledQuantity == 5);
 }
 
 int main(void) {
@@ -362,6 +491,12 @@ int main(void) {
 
   TestCancelOrderAfterFilled<Side::Buy>();
   TestCancelOrderAfterFilled<Side::Sell>();
+
+  TestMultipleOrdersOnLevel<Side::Buy>();
+  TestMultipleOrdersOnLevel<Side::Sell>();
+
+  TestPartialFillThenCancel<Side::Buy>();
+  TestPartialFillThenCancel<Side::Sell>();
 
   return 0;
 }

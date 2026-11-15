@@ -2,7 +2,7 @@
 
 
 CXX      := clang++
-WARN     := -Wall -Wextra -Werror -Wunreachable-code
+WARN     := -Wall -Wextra -Werror -Wunreachable-code -Wshadow
 BASE     := -std=c++20 $(WARN) -Iinclude -MMD -MP
 
 MODE ?= debug

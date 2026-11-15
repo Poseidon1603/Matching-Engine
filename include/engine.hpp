@@ -23,7 +23,7 @@ enum class Status {
   Rejected,
 };
 
-enum class CancelResult {
+enum class CancelStatus {
   Cancelled,
   Rejected,
 };
@@ -49,6 +49,12 @@ struct Result {
   size_t OrderID;
   int FilledQuantity;
   Status OrderStatus;
+};
+
+struct CancelResult {
+  size_t OrderID;
+  std::optional<int> FilledQuantity = std::nullopt;
+  CancelStatus Status;
 };
 
 template <typename T> class MatchingEngine {
@@ -100,7 +106,7 @@ private:
   }
 
   template <Side s>
-  CancelResult CancelBySide(
+  CancelStatus CancelBySide(
       std::unordered_map<
           size_t, typename std::list<Order<T>>::iterator>::iterator IndexIt) {
     auto &Book = GetBook<s>();
@@ -126,7 +132,7 @@ private:
     // Erase from index
     Index.erase(IndexIt);
 
-    return CancelResult::Cancelled;
+    return CancelStatus::Cancelled;
   }
 
   template <Side S> Status Match(Order<T> &O) {
@@ -218,14 +224,17 @@ public:
 
     // The ID doesnt exist
     if (IndexIt == Index.end()) {
-      return CancelResult::Rejected;
+      return {.OrderID = OrderID, .Status = CancelStatus::Rejected};
     }
 
+    int FilledQuantity = IndexIt->second->FilledQuantity;
     // Give the iterator
     if (IndexIt->second->direction == Side::Buy) {
-      return CancelBySide<Side::Buy>(IndexIt);
+      return {OrderID, FilledQuantity, CancelBySide<Side::Buy>(IndexIt)};
     } else {
-      return CancelBySide<Side::Sell>(IndexIt);
+      return {OrderID, FilledQuantity, CancelBySide<Side::Sell>(IndexIt)};
     }
   }
+
+  
 };
