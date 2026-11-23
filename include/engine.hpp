@@ -10,6 +10,7 @@
 #include <map>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 enum class Side { Buy, Sell };
 
@@ -73,6 +74,29 @@ template <typename T> struct GetOrderResult {
   std::optional<GetOrder<T>> Order = std::nullopt;
 };
 
+template <typename T> struct Fill {
+  // Order id
+  size_t id;
+
+  // Trade ID
+  size_t TradeID;
+
+  // Fill price
+  T price;
+  // Time of fill
+  std::chrono::milliseconds time =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+
+  // Fill Quantity
+  int quantity;
+
+  // Quantity Remaining
+  int QuantityRemaining;
+
+  Side direction;
+};
+
 template <typename T> class MatchingEngine {
 private:
   // What buyers are willing to pay
@@ -94,9 +118,16 @@ private:
 
   size_t OrderID = 1;
 
+  size_t TradeID = 1;
+
+  // IS UPDATED, BUT NO TESTS WRITTEN
   T LastPrice = T{};
 
+  // SPREAD NOT USED YET
   T Spread = T{};
+
+  // Vector of fills
+  std::vector<Fill<T>> MatchFills;
 
   template <Side S> bool Crosses(T Price, T PriceLimit) {
     if constexpr (S == Side::Buy) {
@@ -175,6 +206,26 @@ private:
       BestBookOrder.FilledQuantity += MinTradedQ;
       O.FilledQuantity += MinTradedQ;
 
+      // Now 2 fills but with the same tradeID, so they represent 1 trade
+      Fill<T> RestingFill = {
+          .id = BestBookOrder.id,
+          .TradeID = TradeID,
+          .price = *BestBookOrder.price,
+          .quantity = MinTradedQ,
+          .QuantityRemaining = BestBookOrder.GetRemainingQuantity(),
+      };
+      MatchFills.push_back(RestingFill);
+
+      Fill<T> ActiveFill = {
+          .id = O.id,
+          .TradeID = TradeID,
+          .price = *BestBookOrder.price,
+          .quantity = MinTradedQ,
+          .QuantityRemaining = O.GetRemainingQuantity(),
+      };
+      MatchFills.push_back(ActiveFill);
+      TradeID++;
+
       LastPrice = *BestBookOrder.price;
 
       if (BestBookOrder.GetRemainingQuantity() == 0) {
@@ -214,6 +265,9 @@ private:
 
 public:
   Result ExecuteOrder(Order<T> &O) {
+    // Clear Fills from previous order
+    MatchFills.clear();
+
     O.id = OrderID;
     OrderID++;
 
@@ -270,4 +324,6 @@ public:
 
     return {.Status = GetOrderStatus::Found, .Order = O};
   }
+
+  const std::vector<Fill<T>> &LastFills() const { return MatchFills; }
 };
