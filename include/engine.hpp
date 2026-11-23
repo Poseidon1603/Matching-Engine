@@ -84,9 +84,7 @@ template <typename T> struct Fill {
   // Fill price
   T price;
   // Time of fill
-  std::chrono::milliseconds time =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
+  std::chrono::milliseconds time;
 
   // Fill Quantity
   int quantity;
@@ -207,10 +205,15 @@ private:
       O.FilledQuantity += MinTradedQ;
 
       // Now 2 fills but with the same tradeID, so they represent 1 trade
+      std::chrono::milliseconds time =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::system_clock::now().time_since_epoch());
+
       Fill<T> RestingFill = {
           .id = BestBookOrder.id,
           .TradeID = TradeID,
           .price = *BestBookOrder.price,
+          .time = time,
           .quantity = MinTradedQ,
           .QuantityRemaining = BestBookOrder.GetRemainingQuantity(),
       };
@@ -220,6 +223,7 @@ private:
           .id = O.id,
           .TradeID = TradeID,
           .price = *BestBookOrder.price,
+          .time = time,
           .quantity = MinTradedQ,
           .QuantityRemaining = O.GetRemainingQuantity(),
       };
