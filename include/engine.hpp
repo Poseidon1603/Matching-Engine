@@ -216,6 +216,7 @@ private:
           .time = time,
           .quantity = MinTradedQ,
           .QuantityRemaining = BestBookOrder.GetRemainingQuantity(),
+          .direction=BestBookOrder.direction
       };
       MatchFills.push_back(RestingFill);
 
@@ -226,6 +227,7 @@ private:
           .time = time,
           .quantity = MinTradedQ,
           .QuantityRemaining = O.GetRemainingQuantity(),
+          .direction= O.direction
       };
       MatchFills.push_back(ActiveFill);
       TradeID++;
