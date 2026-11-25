@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
+#include <span>
 #include <vector>
 
 void TestPush() {
@@ -52,11 +53,14 @@ void TestSomePush() {
 
   const std::vector<int> nums = {1, 2, 3, 4, 5, 6};
 
-  assert(Buffer.push_some(nums) == 6);
+  std::span<const int> rest = Buffer.push_some(nums);
+  assert(rest.size() == 0);
 
-  for (size_t i = 0; i < nums.size(); i++) {
+  for (size_t i = 0; i < (nums.size() - rest.size()); i++) {
     assert(*Buffer.pop() == nums[i]);
   }
+
+  assert(Buffer.empty());
 }
 
 void TestSomePushV2() {
@@ -70,9 +74,16 @@ void TestSomePushV2() {
 
   assert(*Buffer.pop() == 10);
 
-  size_t pushed = Buffer.push_some(nums);
+  std::span<const int> rest = Buffer.push_some(nums);
 
-  assert(pushed == 2);
+  assert(rest.size() == 3);
+
+  assert(*Buffer.pop() == 12);
+  assert(*Buffer.pop() == 13);
+  assert(*Buffer.pop() == 1);
+  assert(*Buffer.pop() == 2);
+
+  assert(Buffer.empty());
 }
 
 void TestSomePushMoreThanCapacity() {
@@ -80,12 +91,17 @@ void TestSomePushMoreThanCapacity() {
 
   const std::vector<int> nums = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 
-  size_t pushed = Buffer.push_some(nums);
-  assert(pushed == 8);
+  std::span<const int> rest = Buffer.push_some(nums);
 
-  for (size_t i = 0; i < pushed; i++) {
+  assert(rest.size() == 1);
+
+  for (size_t i = 0; i < (nums.size() - rest.size()); i++) {
     assert(*Buffer.pop() == nums[i]);
   }
+
+  assert(rest.size() == 1 && rest.front() == 9);
+
+  assert(Buffer.empty());
 }
 
 void TestRejectOnFull() {
@@ -120,6 +136,7 @@ int main(void) {
   TestEmpty();
   TestSize();
   TestSomePush();
+  TestSomePushV2();
   TestSomePushMoreThanCapacity();
 
   TestRejectOnFull();
