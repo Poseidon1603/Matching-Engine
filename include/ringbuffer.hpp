@@ -2,8 +2,8 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
-#include <limits>
 #include <optional>
+#include <vector>
 
 template <typename T, std::size_t Capacity> class RingBuffer {
   static_assert(Capacity > 0, "Capacity must be greater than 0");
@@ -50,6 +50,24 @@ public:
     // updates
     head_.store(head + 1, std::memory_order_release);
     return true;
+  }
+
+  // give a list of T's push as many as possible into the array
+  size_t push_some(const std::vector<T> &items) {
+    const std::size_t head = head_.load(std::memory_order_relaxed);
+
+    // Check number of free slots
+    const size_t slots =
+        Capacity - (head - tail_.load(std::memory_order_acquire));
+
+    size_t i = 0;
+    for (; i < slots && i < items.size(); i++) {
+      buffer_[(head + i) & kMask] = items[i];
+    }
+
+    head_.store(head + i, std::memory_order_release);
+
+    return i;
   }
 
   std::optional<T> pop() {
