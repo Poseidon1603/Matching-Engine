@@ -12,63 +12,49 @@ Side Opposite(Side s) {
     return Side::Buy;
 }
 
-template <Side s> void TestPush() {
-    MatchingEngine<int> Engine;
-    RingBuffer<Fill<int>, 2> Buffer;
-    
-    Order<int> OrderA = {.price=100, .quantity=10, .direction=s, .type=Type::Limit};
+void TestPush() {
+  RingBuffer<int, 8> Buffer;
 
-    Result ResultO = Engine.ExecuteOrder(OrderA);
-
-    assert(ResultO.OrderStatus == Status::Resting);
-
-    Order<int> OrderB = {.price=100, .quantity=10, .direction=Opposite(s),.type=Type::Limit};
-
-    Result ResultO2 = Engine.ExecuteOrder(OrderB);
-
-    assert(ResultO2.OrderStatus == Status::Filled);
-    assert(ResultO2.FilledQuantity == 10);
-
-    for (const auto& fill : Engine.LastFills()) {
-      assert(Buffer.push(fill));
-    }
-    assert(Buffer.size() == 2);
+  assert(Buffer.push(1));
 }
 
-template <Side s> void TestPop() {
-  MatchingEngine<int> Engine;
-  RingBuffer<Fill<int>, 2> Buffer;
+void TestPop() {
+  RingBuffer<int, 8> Buffer;
 
-  Order<int> OrderA {.price=100, .quantity=10, .direction=s, .type= Type::Limit};
+  assert(Buffer.push(1));
 
-  Result ResultO = Engine.ExecuteOrder(OrderA);
-
-  assert(ResultO.OrderStatus == Status::Resting);
-
-  Order<int> OrderB = {.price=100, .quantity=10, .direction=Opposite(s), .type=Type::Limit};
-
-  Result ResultO2 = Engine.ExecuteOrder(OrderB);
-
-  assert(ResultO2.OrderStatus == Status::Filled);
-  assert(ResultO2.FilledQuantity == 10);
-
-  for (const auto& fill : Engine.LastFills()) {
-    Buffer.push(fill);
-  }
-
-  assert(Buffer.size() == 2);
-
-  // Resting fill
-  Fill<int> FillA = *Buffer.pop();
-
-  // Active Fill
-  Fill<int> FillB = *Buffer.pop();
-
-  assert(FillA.TradeID == FillB.TradeID);
-  assert(FillA.direction == OrderA.direction);
-  assert(FillB.direction == OrderB.direction);
+  assert(*Buffer.pop() == 1);
 }
 
+void TestSize() {
+  RingBuffer<int, 8> Buffer;
+
+  assert(Buffer.push(1));
+  assert(Buffer.size() == 1);
+}
+
+void TestEmpty() {
+  RingBuffer<int, 8> Buffer;
+
+  assert(Buffer.push(1));
+  assert(!Buffer.empty());
+}
+
+void TestFull() {
+  RingBuffer<int, 2> Buffer;
+
+  assert(Buffer.push(1));
+  assert(Buffer.push(2));
+  assert(Buffer.full());
+}
+
+void TestRejectOnFull() {
+  RingBuffer<int, 2> Buffer;
+
+  assert(Buffer.push(1));
+  assert(Buffer.push(2));
+  assert(!Buffer.push(3));
+}
 
 // Overflow
 void TestOverflow() {
@@ -90,14 +76,14 @@ void TestOverflow() {
 }
 
 int main(void) {
-  TestPop<Side::Buy>();
-  TestPop<Side::Sell>();
+  TestPop();
+  TestPush();
+  TestFull();
+  TestEmpty();
+  TestSize();
 
-  TestPush<Side::Buy>();
-  TestPush<Side::Sell>();
-
+  TestRejectOnFull();
 
   // Overflow
   TestOverflow();
-
 }

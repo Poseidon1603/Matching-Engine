@@ -80,7 +80,6 @@ public:
     return (head - tail_.load(std::memory_order_acquire) == Capacity);
   }
 
-
   std::size_t size() const {
     const std::size_t tail = tail_.load(std::memory_order_acquire);
 
